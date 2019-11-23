@@ -16,3 +16,7 @@
 ```./acquisition.sh -h``` for details.
 
 4. Check logs stored by default in *acquisition.log*
+
+# Other
+Using modification of logging script used from following source: 
+https://github.com/adoyle-h/bash-logger
