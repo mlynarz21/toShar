@@ -1,2 +1,0 @@
-https://s3.amazonaws.com/tripdata/201601-citibike-tripdata.zip /user/cloudera/in/trips
-https://s3.amazonaws.com/tripdata/201602-citibike-tripdata.zip /user/cloudera/in/trips
