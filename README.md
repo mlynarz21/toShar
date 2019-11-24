@@ -14,6 +14,12 @@ To check results after finishing this script, use:
 ./show_structure.sh
 ```
 
+# Test
+Test checking if sample file is processed is stored in ```./test```.
+To use it, execute ```./test.sh``` and check logs.
+To test script against network interruptions, start test and then manually
+disconnect from network.
+
 # Other
 Using modification of logging script used from following source: 
 https://github.com/adoyle-h/bash-logger
