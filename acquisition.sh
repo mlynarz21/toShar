@@ -1,11 +1,12 @@
 #!/bin/bash
 
 DESCR="Script downloads files listed in first column of given list and stores in HDFS in location specified in second column."
-USAGE="USAGE: $0 -i=DATA_SRC_DEST_FILE [-e=CSV_DATA_HEADER_FILE] [-l=LOG_FILE] [-g=LOGGING_SCRIPT]"
+USAGE="USAGE: $0 -i=DATA_SRC_DEST_FILE [-e=CSV_DATA_HEADER_FILE] [-a=CSV_DATA_ALT_HEADER_FILE] [-l=LOG_FILE] [-g=LOGGING_SCRIPT]"
 
 # default values
 LOG_FILE="$PWD/acquisition.log"
 CSV_DATA_HEADER_FILE="$PWD/trip_data_header.csv"
+CSV_DATA_ALT_HEADER_FILE="$PWD/trip_data_header_2.csv"
 LOGGING_SCRIPT="$PWD/bash-logger/src/logger.sh"
 
 # returns absolute path
@@ -31,6 +32,9 @@ case $i in
     -e=* | --csv-header=*)
     	CSV_DATA_HEADER_FILE=$(as_abs "${i#*=}")
     	;;
+    -a=* | --csv-alt-header=*)
+       	CSV_DATA_ALT_HEADER_FILE=$(as_abs "${i#*=}")
+       	;;
     -g=* | --log-module=*)
     	LOGGING_SCRIPT=$(as_abs "${i#*=}")
     	;;
@@ -71,6 +75,10 @@ compute_hdfs_checksum() {
 }
 
 
+rm_hdfs_file() {
+	hadoop fs -rm -f -skipTrash "$1"
+}
+
 # Performs checking after uploading file to HDFS:
 # 	1. checks if given file is present in HDFS
 #   2. checks if checksums are same
@@ -91,6 +99,8 @@ test_hdfs_file() {
 	local remote_checksum=$(compute_hdfs_checksum "$filepath")
 	if [[ "$remote_checksum" != "$local_checksum" ]];then
 		ERROR "Checksums don't match. Try to upload files again."
+		# clean before exit
+		rm_hdfs_file "$filepath"
 		exit 1
 	fi
 }
@@ -107,8 +117,11 @@ test_hdfs_dir() {
 	fi
 }
 
-# checks if file contains data and has declararation of all required csv fields
-verify_data_file() {
+# Changes format of files: removes quoting and changes to lowercase to keep
+# same format for all files (there are some inconsistencies in source files).
+# Changes file in place (save under same name).
+# Fails if file is empty.
+prepare_data_file() {
 	if [[ -z "$1" ]]; then
 		ERROR "Path not given or empty."
 		exit 1
@@ -116,13 +129,44 @@ verify_data_file() {
 	local data_file="$1"
 	if [ -z "$data_file" ];then
 		ERROR "File doesn't contain any data."
+		# clean before exit
+		rm -f "$data_file"
 		return 1
 	fi
 
-	# check header of file
-	if [[ $(head -n 1 "$data_file") != $(cat "$CSV_DATA_HEADER_FILE") ]];then
-		ERROR "Invalid CSV file header in file $data_file"
+	# lowercase fields in header and remove quoting
+	awk '{ if (NR == 1) print tolower($0); print }' "$data_file" \
+		| tr -d '"' > /tmp/data.tmp \
+		&& mv /tmp/data.tmp "$data_file"
+}
+
+# checks if file contains data and has declararation of all required csv fields.
+# While verifying header, checks against two versions of header. In case of 
+# matching header preserves unquoted, lowercased header.
+verify_data_file() {
+	if [[ -z "$1" ]]; then
+		ERROR "Path not given or empty."
 		exit 1
+	fi
+	local data_file="$1"
+	
+	src_file_header=$(head -n 1 "$data_file")
+	if [[ "$src_file_header" != $(cat "$CSV_DATA_HEADER_FILE") ]];then
+		INFO "Checking alternative version of header ..."			
+		if [[ "$src_file_header" != $(cat "$CSV_DATA_ALT_HEADER_FILE") ]];then
+			ERROR "Invalid CSV file header in file $data_file:
+			Expected: $(cat $CSV_DATA_HEADER_FILE)
+			Or: $(cat $CSV_DATA_ALT_HEADER_FILE)
+			Was: $src_file_header"
+
+			# clean before exit
+			rm -f "$data_file"
+			exit 1
+		else
+			INFO "Change header from alternative version to preferred ..."
+			cat "$CSV_DATA_HEADER_FILE" <(tail -n +2 "$data_file") > /tmp/with_changed_header.tmp \
+				&& mv /tmp/with_changed_header.tmp "$data_file"
+		fi
 	fi
 }
 
@@ -154,7 +198,10 @@ remote_to_hdfs() {
 	fi
 
 	INFO "Change from dos file format (line endings) to unix format ..."
-	dos2unix "$csv_data"
+	
+	# dos2unix "$csv_data"
+	cat "$csv_data" | tr -d "\r" > /tmp/data_unix_fmt.tmp \
+		&& mv /tmp/data_unix_fmt.tmp "$csv_data"
 	
 	# check if file is already in hdfs; if yes then use checksum to determine
 	# if should be leaved or overwritten
@@ -174,16 +221,20 @@ remote_to_hdfs() {
 		fi	
 	fi
 
+
+	INFO "Prepare format of downloaded file ($download_url) ..."
+	prepare_data_file "$csv_data"
 	INFO "Verify correctness of downloaded file ($download_url) ..."
 	verify_data_file "$csv_data"
-	
+
+	local local_chg_checksum=$(compute_checksum "$csv_data")
 	INFO "Uploading $csv_data to HDFS:${upload_path} ..."
 	hadoop fs -moveFromLocal "$csv_data" "$upload_path"
 	INFO "Removing temporary files ..."
 	rm -f "$csv_data"
 
 	INFO "Check if file $csv_data has been correctly uploaded into HDFS ..."
-	test_hdfs_file "$upload_path" "$local_checksum"
+	test_hdfs_file "$upload_path" "$local_chg_checksum"
 	INFO "File $csv_data has been successfully uploaded to $upload_path ."
 }
 
