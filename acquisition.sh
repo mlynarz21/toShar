@@ -34,7 +34,7 @@ case $i in
     	data_src_dest_list=$(as_abs "${i#*=}")
     	;;
     -l=* | --log-file=*)
-    	LOG_FILE=$(as_abs "${i#*=}")
+    	LOG_FILE="${i#*=}"
     	;;
     -e=* | --csv-header=*)
     	CSV_DATA_HEADER_FILE=$(as_abs "${i#*=}")
@@ -139,7 +139,7 @@ test_hdfs_dir() {
 check_hdfs_connection() {
 	set -o pipefail
 	INFO "Checking connection to HDFS ..."
-	hadoop fs -ls /user/cloudera/in 3>&1 2>&3 >/dev/null | tee -a "$LOG_FILE"
+	hadoop fs -ls /user/cloudera/in 3>&1 2>&3 >/dev/null | INFO
 	if [ $? -ne 0 ];then
 		ERROR "Cannot connect to HDFS."
 		exit 1

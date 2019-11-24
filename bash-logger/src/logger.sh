@@ -21,8 +21,20 @@
 # LOG_TARGET=${1}
 LOG_TARGET=${1-}
 
+is_hdfs=''
+
 if [[ -n "$LOG_TARGET" ]] ;then
-    touch "$LOG_TARGET"
+	if [[ "$LOG_TARGET" == hdfs:* ]]; then  # create log file in hdfs
+		hdfs_log=$( echo $LOG_TARGET | sed 's/^hdfs://' )
+		LOG_TARGET="$hdfs_log"
+		is_hdfs='yes'
+		if ! hadoop fs -test -e "$LOG_TARGET";then
+			echo "Creating HDFS log file: $LOG_TARGET"
+			hadoop fs -touchz "$LOG_TARGET"
+		fi
+	else   # create local log file
+    	touch "$LOG_TARGET"
+    fi
 fi
 
 
@@ -33,10 +45,20 @@ fi
 function _echo() {
     local msg=$1
     if [[ -n "$LOG_TARGET" ]] ;then
-        echo "$msg" | tee -a "$LOG_TARGET"
+    	if [[ ! -z "$is_hdfs" ]]; then
+			_echo_hdfs "$msg"
+    	else
+			echo "$msg" | tee -a "$LOG_TARGET"
+    	fi
     else
         echo "$msg"
     fi
+}
+
+function _echo_hdfs() {
+	local msg=$1
+	hadoop fs -appendToFile <(echo "$msg") "$LOG_TARGET"
+    echo "$msg"
 }
 
 function _date_time() {
