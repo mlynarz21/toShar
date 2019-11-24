@@ -9,5 +9,6 @@ make_dir_structure () {
 		"$RESULT_DIR"
 }
 
+hadoop dfsadmin -safemode leave
 echo "Initializing project structure ..."
 make_dir_structure
