@@ -1,21 +1,18 @@
 # Instruction
-1. Initialize project structure in HDFS:
+Script ```run.sh``` performs following tasks: prepare project structure
+in HDFS, download required sources (**bike trip** and **weather** data)
+from Internet, validate, transform to proper format and place in HDFS.
+
+## Usage
 ```
-./initialize.sh
+./run.sh
 ```
 
-2. Generate list of sources and destination points:
+## Results
+To check results after finishing this script, use:
 ```
-./generate_trip_sources_list.sh > sources.txt
+./show_structure.sh
 ```
-
-3. Call acquisition script:
-```
-./acquisition.sh -i=sources.txt
-```
-```./acquisition.sh -h``` for details.
-
-4. Check logs stored by default in *acquisition.log*
 
 # Other
 Using modification of logging script used from following source: 

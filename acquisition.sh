@@ -1,13 +1,20 @@
 #!/bin/bash
 
-DESCR="Script downloads files listed in first column of given list and stores in HDFS in location specified in second column."
-USAGE="USAGE: $0 -i=DATA_SRC_DEST_FILE [-e=CSV_DATA_HEADER_FILE] [-a=CSV_DATA_ALT_HEADER_FILE] [-l=LOG_FILE] [-g=LOGGING_SCRIPT]"
+DESCR="Script downloads files listed in first column of given file and stores 
+in HDFS in location specified in second column."
+USAGE="USAGE: $0 -i=DATA_SRC_DEST_FILE [-e=CSV_DATA_HEADER_FILE] [-l=LOG_FILE] 
+[-a=CSV_DATA_ALT_HEADER_FILE] [-t=TIMEOUT_IN_SECS] [-r=TRIES_NUMBER] 
+[--remove-cr] [--replace-cr] [-g=LOGGING_SCRIPT]"
 
 # default values
 LOG_FILE="$PWD/acquisition.log"
-CSV_DATA_HEADER_FILE="$PWD/trip_data_header.csv"
-CSV_DATA_ALT_HEADER_FILE="$PWD/trip_data_header_2.csv"
+# CSV_DATA_HEADER_FILE="$PWD/trip_data_header.csv"
+# CSV_DATA_ALT_HEADER_FILE="$PWD/trip_data_header_2.csv"
 LOGGING_SCRIPT="$PWD/bash-logger/src/logger.sh"
+timeout=30  # seconds
+retry=3  # times
+remove_cr=''
+replace_cr=''
 
 # returns absolute path
 as_abs() {
@@ -35,9 +42,21 @@ case $i in
     -a=* | --csv-alt-header=*)
        	CSV_DATA_ALT_HEADER_FILE=$(as_abs "${i#*=}")
        	;;
+    -t=* | --timeout=*)
+       	timeout="${i#*=}"
+       	;;
+    -r=* | --retry=*)
+       	retry="${i#*=}"
+       	;;
     -g=* | --log-module=*)
     	LOGGING_SCRIPT=$(as_abs "${i#*=}")
     	;;
+    --remove-cr)
+   	    remove_cr='yes'
+   	    ;;
+   	--replace-cr)
+   	    replace_cr='yes'
+   	    ;;
     -h | --help)
 	    echo "$DESCR"
 	    echo "$USAGE"
@@ -117,6 +136,17 @@ test_hdfs_dir() {
 	fi
 }
 
+check_hdfs_connection() {
+	set -o pipefail
+	INFO "Checking connection to HDFS ..."
+	hadoop fs -ls /user/cloudera/in 3>&1 2>&3 >/dev/null | tee -a "$LOG_FILE"
+	if [ $? -ne 0 ];then
+		ERROR "Cannot connect to HDFS."
+		exit 1
+	fi
+	set +o pipefail
+}
+
 # Changes format of files: removes quoting and changes to lowercase to keep
 # same format for all files (there are some inconsistencies in source files).
 # Changes file in place (save under same name).
@@ -135,14 +165,15 @@ prepare_data_file() {
 	fi
 
 	# lowercase fields in header and remove quoting
-	awk '{ if (NR == 1) print tolower($0); print }' "$data_file" \
+	awk '{ if (NR == 1) {print tolower($0)} else print }' "$data_file" \
 		| tr -d '"' > /tmp/data.tmp \
 		&& mv /tmp/data.tmp "$data_file"
 }
 
 # checks if file contains data and has declararation of all required csv fields.
-# While verifying header, checks against two versions of header. In case of 
-# matching header preserves unquoted, lowercased header.
+# While verifying header, checks against two versions of header (if alternative
+# version header given). In case of matching header preserves unquoted, 
+# lowercased header.
 verify_data_file() {
 	if [[ -z "$1" ]]; then
 		ERROR "Path not given or empty."
@@ -152,21 +183,37 @@ verify_data_file() {
 	
 	src_file_header=$(head -n 1 "$data_file")
 	if [[ "$src_file_header" != $(cat "$CSV_DATA_HEADER_FILE") ]];then
-		INFO "Checking alternative version of header ..."			
-		if [[ "$src_file_header" != $(cat "$CSV_DATA_ALT_HEADER_FILE") ]];then
-			ERROR "Invalid CSV file header in file $data_file:
-			Expected: $(cat $CSV_DATA_HEADER_FILE)
-			Or: $(cat $CSV_DATA_ALT_HEADER_FILE)
-			Was: $src_file_header"
-
-			# clean before exit
-			rm -f "$data_file"
-			exit 1
-		else
-			INFO "Change header from alternative version to preferred ..."
-			cat "$CSV_DATA_HEADER_FILE" <(tail -n +2 "$data_file") > /tmp/with_changed_header.tmp \
-				&& mv /tmp/with_changed_header.tmp "$data_file"
+		WARN "CSV file header in file $data_file not match $CSV_DATA_HEADER_FILE"
+		if [[ -n "$CSV_DATA_ALT_HEADER_FILE" ]];then
+			INFO "Checking alternative version of header ..."			
+			if [[ "$src_file_header" = $(cat "$CSV_DATA_ALT_HEADER_FILE") ]];then
+				INFO "Change header from alternative version to preferred ..."
+				cat "$CSV_DATA_HEADER_FILE" <(tail -n +2 "$data_file") > /tmp/with_changed_header.tmp \
+					&& mv /tmp/with_changed_header.tmp "$data_file"
+				return 0
+			fi
 		fi
+		ERROR "Invalid CSV file header in file $data_file:
+		Expected: $(cat $CSV_DATA_HEADER_FILE)
+		Or: $(cat $CSV_DATA_ALT_HEADER_FILE)
+		Was: $src_file_header"
+
+		# clean before exit
+		rm -f "$data_file"
+		exit 1
+	fi
+}
+
+adjust_textfile_format() {
+	if [[ -n "$replace_cr" ]];then
+		INFO "Change line endings to unix format (replace carriage-return with newline) ..."
+		cat "$csv_data" | tr "\r" "\n" > /tmp/data_fmt.tmp \
+			&& mv /tmp/data_fmt.tmp "$csv_data"
+	fi
+	if [[ -n "$remove_cr" ]];then
+		INFO "Change line endings to unix format (remove carriage-return) ..."
+		cat "$csv_data" | tr -d "\r" > /tmp/data_fmt.tmp \
+			&& mv /tmp/data_fmt.tmp "$csv_data"
 	fi
 }
 
@@ -179,12 +226,21 @@ remote_to_hdfs() {
 		ERROR "URL to resource or dest path not given."
 		return 1
 	fi
+
+	check_hdfs_connection
+
 	test_hdfs_dir "$upload_dir"
 	INFO "Downloading $download_url into $upload_dir ..."
 	# store temporary files in /tmp
 	cd "/tmp"
 	arch_name="temp.zip"
-	wget "$download_url" -O "$arch_name"
+	wget "$download_url" --timeout $timeout --tries $retry -O "$arch_name"
+	if [ $? -ne 0 ];then
+		ERROR "Cannnot download file $download_url . Check internet connections \
+		and try again."
+		rm -f "$download_url"
+		exit 1
+	fi
 	# we know that archive contains only one file
 	csv_data=$(zipinfo -1 "$arch_name" | head -n 1)
 	upload_path="$upload_dir/$csv_data"
@@ -197,11 +253,8 @@ remote_to_hdfs() {
 		return 1
 	fi
 
-	INFO "Change from dos file format (line endings) to unix format ..."
-	
-	# dos2unix "$csv_data"
-	cat "$csv_data" | tr -d "\r" > /tmp/data_unix_fmt.tmp \
-		&& mv /tmp/data_unix_fmt.tmp "$csv_data"
+	# adjust format if needed
+	adjust_textfile_format "$csv_data"
 	
 	# check if file is already in hdfs; if yes then use checksum to determine
 	# if should be leaved or overwritten
