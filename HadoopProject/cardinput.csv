@@ -1,0 +1,7 @@
+"tripduration","starttime","stoptime","start station id","start station name","start station latitude","start station longitude","end station id","end station name","end station latitude","end station longitude","bikeid","usertype","birth year","gender"
+327,"2019-09-01 00:00:01.9580","2019-09-01 00:05:29.3410",3733,"Avenue C & E 18 St",40.730563,-73.973984,504,"1 Ave & E 16 St",40.73221853,-73.98165557,39213,"Subscriber",1968,1
+1145,"2019-09-01 00:00:04.1430","2019-09-01 00:19:09.8360",3329,"Degraw St & Smith St",40.6829151,-73.99318208,270,"Adelphi St & Myrtle Ave",40.69308257,-73.97178913,21257,"Customer",1969,0
+1293,"2019-09-01 00:00:07.3090","2019-09-01 00:21:40.7580",3168,"Central Park West & W 85 St",40.78472675,-73.96961715,423,"W 54 St & 9 Ave",40.76584941,-73.98690506,15242,"Customer",1969,0
+1753,"2019-09-01 00:00:08.0640","2019-09-01 00:29:21.5040",3299,"E 98 St & Park Ave",40.78813,-73.95206,3160,"Central Park West & W 76 St",40.77896784,-73.97374737,38760,"Subscriber",1990,1
+613,"2019-09-01 00:00:12.8510","2019-09-01 00:10:26.1850",486,"Broadway & W 29 St",40.7462009,-73.98855723,478,"11 Ave & W 41 St",40.76030096,-73.99884222,32094,"Subscriber",1992,1
+482,"2019-09-01 00:00:16.5960","2019-09-01 00:08:19.4980",3775,"Suydam St & Knickerbocker Ave",40.702013,-73.923769,3771,"McKibbin St & Bogart St",40.706237,-73.933871,28271,"Customer",1969,0
