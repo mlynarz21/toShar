@@ -12,7 +12,10 @@ import java.net.URLConnection;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
 public class BikeMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 
@@ -34,60 +37,109 @@ public class BikeMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 			String birthYear = vals[13].replace("\"", "");
 			String gender = vals[14].replace("\"", "");
 
-			System.out.println(startTime);
+//			System.out.println(startTime);
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSS");
 			LocalDateTime dateAndTime = LocalDateTime.parse(startTime, formatter);
-			String dateAndTimeKey = String.format("%02d", dateAndTime.getMonthValue())+String.format("%02d", dateAndTime.getDayOfMonth())+String.format("%02d", dateAndTime.getHour());
-			HashMap<String, Weather> weatherDict = loadWeatherDict("/home/cloudera/Desktop/2016Weather.csv");
+			String dateAndTimeKey = String.format("%02d", dateAndTime.getMonthValue()) + String.format("%02d", dateAndTime.getDayOfMonth()) + String.format("%02d", dateAndTime.getHour());
+//			HashMap<String, Weather> weatherDict = loadWeatherDict("/home/cloudera/Desktop/2016Weather.csv");
 
-			Weather weather = weatherDict.get(dateAndTimeKey);
-			Boolean isSnow = weather.isSnow();
-			Boolean isFog = weather.isFog();
-			Boolean isRain = weather.isSnow();
-			String weatherDescription = weather.getConditions();
+//			Weather weather = weatherDict.get(dateAndTimeKey);
+//			Boolean isSnow = weather.isSnow();
+//			Boolean isFog = weather.isFog();
+//			Boolean isRain = weather.isRain();
+//			String weatherDescription = weather.getConditions();
 
 			String districtName = getDistrict(getLink(stationLat, stationLong));
 
-			stringBuilder.append(duration).append(',')
-					.append(startTime).append(',')
-					.append(finishTime).append(',')
+//			TODO to mogl byc etap1, ale jak zlaczymy to to co ponizej
+//			stringBuilder
+//					.append(duration).append(',')
+//					.append(startTime).append(',')
+//					.append(finishTime).append(',')
+//					.append(stationLat).append(',')
+//					.append(stationLong).append(',')
+//					.append(subscription).append(',')
+//					.append(birthYear).append(',')
+//					.append(gender).append(',')
+//					.append(districtName).append(',')
+//					.append(weatherDescription).append(',').
+//					append(isSnow).append(',').
+//					append(isFog).append(',').
+//					append(isRain);
+
+			stringBuilder
+					.append(duration).append(',')
+//					.append(isFog).append(',')
+//					.append(isRain).append(',')
+//					.append(isSnow).append(',')
+//					.append(isCloudly(weatherDescription)).append(',')
 					.append(stationLat).append(',')
 					.append(stationLong).append(',')
 					.append(subscription).append(',')
-					.append(birthYear).append(',')
-					.append(gender).append(',')
-					.append(districtName).append(',')
-					.append(weatherDescription).append(',').
-					append(isSnow).append(',').
-					append(isFog).append(',').
-					append(isRain);
+					.append(getTimeOfDay(startTime)).append(',')
+					.append(getAgeGroupName(birthYear)).append(',')
+					.append(getGender(gender)).append(',');
+//					.append(districtName).append(',')
+//					.append(weatherDescription).append(',')
+//					.append(getSubjectiveDescription(weatherDescription));
 
 			context.write(key, new Text(stringBuilder.toString()));
 		}
 	}
 
-//	private String getTimeOfDay(String startTime){
-//
-//	}
-//
-//	private String getAgeGroupName(String birthYear){
-//
-//	}
-//
-//	private String getSubjectiveDescription(String weatherContitions){
-//
-//	}
-//
-//	private Boolean isCloudly(String weatherContitions){
-//
-//	}
-
-	private String getLink(String latitude, String longitude){
-		String API_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client?";
-		return API_URL +"latitude="+latitude+"&longitude="+longitude;
+	private String getTimeOfDay(String startTime) {
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSS");
+		LocalDateTime dateAndTime = LocalDateTime.parse(startTime, formatter);
+		if ((dateAndTime.getHour() > 6 || dateAndTime.getHour() == 6 && dateAndTime.getMinute() > 0) && dateAndTime.getHour() < 22 || dateAndTime.getHour() == 22 && dateAndTime.getMinute() == 0)
+			return "Day";
+		else return "Night";
 	}
 
-	private String getDistrict(String link){
+	private String getAgeGroupName(String birthYear) {
+
+		int birthYr = Integer.valueOf(birthYear);
+
+		if (birthYr >= 2004)
+			return "Child";
+		else if (birthYr >= 1998)
+			return "Youth";
+		else if (birthYr >= 1986)
+			return "Young";
+		else if (birthYr >= 1961)
+			return "Mature";
+		else return "Elderly";
+	}
+
+	private String getSubjectiveDescription(String weatherConditions) {
+		List<String> goodConditions = new ArrayList<>(Arrays.asList("Clear", "Haze", "Overcast", "Scattered Clouds", "Partly Cloudly", "Mostly Cloudly"));
+		List<String> badConditions = new ArrayList<>(Arrays.asList("Fog", "Light Freezing Fog", "Light Snow", "Snow", "Heavy Snow", "Light Rain", "Rain", "Light Freezing Rain", "Heavy Rain"));
+
+		return goodConditions.contains(weatherConditions) ? "Good" : badConditions.contains(weatherConditions) ? "Bad" : "Unknown";
+	}
+
+	private Boolean isCloudly(String weatherConditions) {
+		List<String> cloudyConditions = new ArrayList<>(Arrays.asList("Overcast", "Scattered Clouds", "Partly Cloudly", "Mostly Cloudly"));
+		return cloudyConditions.contains(weatherConditions);
+	}
+
+	private String getGender(String genderID) {
+		int genderId = Integer.valueOf(genderID);
+		switch (genderId) {
+			case 1:
+				return "Man";
+			case 2:
+				return "Woman";
+			default:
+				return "Unknown";
+		}
+	}
+
+	private String getLink(String latitude, String longitude) {
+		String API_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client?";
+		return API_URL + "latitude=" + latitude + "&longitude=" + longitude;
+	}
+
+	private String getDistrict(String link) {
 		JsonArray array;
 		String district = "NA";
 
@@ -101,9 +153,9 @@ public class BikeMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 			JsonElement root = jp.parse(new InputStreamReader((InputStream) request.getContent())); //Convert the input stream to a json element
 			JsonObject rootobj = root.getAsJsonObject();
 			array = rootobj.get("localityInfo").getAsJsonObject().get("administrative").getAsJsonArray();
-			for(int i = 0; i< array.size() && district.equals("NA"); i++)
-				if(array.get(i).getAsJsonObject().get("description").getAsString().startsWith("borough"))
-					district=array.get(i).getAsJsonObject().get("name").getAsString();
+			for (int i = 0; i < array.size() && district.equals("NA"); i++)
+				if (array.get(i).getAsJsonObject().get("description").getAsString().startsWith("borough"))
+					district = array.get(i).getAsJsonObject().get("name").getAsString();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -112,7 +164,7 @@ public class BikeMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 	}
 
 
-	private HashMap<String, Weather> loadWeatherDict(String file){
+	private static HashMap<String, Weather> loadWeatherDict(String file) {
 		HashMap<String, Weather> weatherDict = new HashMap<>();
 		int prevHour = 0;
 		int curHour;
@@ -124,8 +176,8 @@ public class BikeMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 				String[] data = row.split(",");
 				DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yy HH:mm");
 				LocalDateTime dateAndTime = LocalDateTime.parse(data[0], formatter);
-				Weather weather = new Weather(dateAndTime, data[22], Boolean.parseBoolean(data[24]), Boolean.parseBoolean(data[25]), Boolean.parseBoolean(data[26]));
-				String key = String.format("%02d", dateAndTime.getMonthValue())+String.format("%02d", dateAndTime.getDayOfMonth())+String.format("%02d", dateAndTime.getHour());
+				Weather weather = new Weather(dateAndTime, data[22], data[24].equals("1"), data[25].equals("1"), data[26].equals("1"));
+				String key = String.format("%02d", dateAndTime.getMonthValue()) + String.format("%02d", dateAndTime.getDayOfMonth()) + String.format("%02d", dateAndTime.getHour());
 				weatherDict.put(key, weather);
 
 				curHour = dateAndTime.getHour();
@@ -133,11 +185,11 @@ public class BikeMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 //					System.out.println(dateAndTime);
 //					System.out.println("Previous Hour:" + prevHour + " Current Hour:" + curHour);
 					LocalDateTime newDateTime = dateAndTime;
-					for(int i = getNextHour(prevHour); i != curHour; i=getNextHour(i)) {
+					for (int i = getNextHour(prevHour); i != curHour; i = getNextHour(i)) {
 //						System.out.println("Handling missing hour: " + i);
 						newDateTime = newDateTime.minus(Duration.ofHours(1));
-						Weather addon = new Weather(newDateTime, data[22], Boolean.parseBoolean(data[24]), Boolean.parseBoolean(data[25]), Boolean.parseBoolean(data[26]));
-						String addonKey = String.format("%02d", newDateTime.getMonthValue())+String.format("%02d", newDateTime.getDayOfMonth())+String.format("%02d", newDateTime.getHour());
+						Weather addon = new Weather(newDateTime, data[22], data[24].equals("1"), data[25].equals("1"), data[26].equals("1"));
+						String addonKey = String.format("%02d", newDateTime.getMonthValue()) + String.format("%02d", newDateTime.getDayOfMonth()) + String.format("%02d", newDateTime.getHour());
 						weatherDict.put(addonKey, addon);
 					}
 				}
@@ -153,10 +205,9 @@ public class BikeMapper extends Mapper<LongWritable, Text, LongWritable, Text> {
 		return weatherDict;
 	}
 
-	private static int getNextHour(int curHour){
-		if (curHour==23)
+	private static int getNextHour(int curHour) {
+		if (curHour == 23)
 			return 0;
-		else return curHour+1;
+		else return curHour + 1;
 	}
-
 }
